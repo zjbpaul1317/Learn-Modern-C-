@@ -123,3 +123,97 @@ Task &Task_queue::get_task()
     pthread_mutex_unlock(&m_mutex);
     return t;
 }
+
+Thread_pool::Thread_pool(int min, int max)
+{
+    // 实例化任务队列
+    m_task_queue = new Task_queue;
+    // do while的好处，但是C++有析构，不太用得上
+    do
+    {
+        // 初始化线程池
+        m_min_num = min;
+        m_max_num = max;
+        m_busy_num = 0;
+        m_live_num = min;
+
+        // 根据最大上限给线程数组分配内存
+        thread_compose = new pthread_t[m_max_num];
+        if (thread_compose == nullptr)
+        {
+            std::cout << "create thread array fail" << std::endl;
+            break;
+        }
+
+        // 初始化线程数组
+        memset(&thread_compose, 0, sizeof(thread_compose) * m_max_num);
+
+        // 初始化互斥锁和条件变量
+        if (pthread_mutex_init(&m_mutex_pool, nullptr) != 0)
+        {
+            throw ::std::exception();
+        }
+        if (pthread_cond_init(&m_not_empty, nullptr) != 0)
+        {
+            throw ::std::exception();
+        }
+
+        // 创建管理者线程
+        pthread_create(&m_manage_thread, nullptr, manager, this);
+
+        // 创建工作线程
+        for (int i = 0; i < m_min_num; i++)
+        {
+            // 传this指针，才能访问类内成员函数
+            pthread_create(&thread_compose[i], nullptr, worker, this);
+        }
+    } while (0);
+}
+
+Thread_pool::~Thread_pool()
+{
+    shutdown = 1;
+    // 销毁管理者线程
+    pthread_join(m_manager_thread, NULL);
+    // 唤醒所有消费者线程
+    for (int i = 0; i < m_live_num; ++i)
+    {
+        // signal 是唤醒某一个,broadcast是唤醒所有，但是还是要抢一把锁，所以都一样
+        pthread_cond_signal(&m_not_empty);
+    }
+
+    if (m_task_queue)
+    {
+        delete m_task_queue;
+    }
+
+    if (thread_compose)
+    {
+        delete[] thread_compose;
+    }
+    pthread_mutex_destroy(&m_mutex_pool);
+    pthread_cond_destroy(&m_not_empty);
+}
+
+void Thread_pool::add_task(Task task)
+{
+}
+
+int Thread_pool::get_busy_num()
+{
+}
+
+// 管理线程任务函数
+// 主要任务：不断检测工作线程数量，存活线程的数量，然后再决定增加还是删除
+void *Thread_pool::manager(void *arg)
+{
+}
+
+// 工作线程任务函数
+void *Thread_pool::worker(void *arg)
+{
+}
+
+void Thread_pool::destory_thread()
+{
+}
