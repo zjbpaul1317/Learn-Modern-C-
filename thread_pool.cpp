@@ -101,5 +101,12 @@ Task_queue::~Task_queue()
 
 void Task_queue::add_task(Task &task)
 {
+    pthread_mutex_lock(&m_mutex);
+    m_queue.push(task);
+    pthread_mutex_unlock(&m_mutex);
+}
+
+void Task_queue::add_task(callback f, void *arg)
+{
     
 }
