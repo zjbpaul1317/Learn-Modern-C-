@@ -2,9 +2,9 @@ struct ListNode
 {
     int val;
     ListNode* next;
-    ListNode() : val(0), node(nullptr){}
-    ListNode(int x) : val(x), node(nullptr){}
-    ListNode(int x, ListNode* next) : val(x), node(next) {}
+    ListNode() : val(0), next(nullptr){}
+    ListNode(int x) : val(x), next(nullptr){}
+    ListNode(int x, ListNode* next) : val(x), next(next) {}
 };
 
 class Solution
@@ -16,5 +16,11 @@ public:
         {
             return head;
         }
+
+        ListNode* newNode = head->next;
+        head->next = swapPairs(newNode->next);
+        newNode->next = head;
+        
+        return newNode; 
     }
 };
