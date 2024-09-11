@@ -142,24 +142,86 @@ namespace sylar
      */
     void Fiber::reset(std::function<void()> cb)
     {
+        SYLAR_ASSERT(m_stack);
+        SYLAR_ASSERT(m_state == TERM);
+        m_cb = cb;
+        if(getcontext(&m_ctx))
+        {
+            SYLAR_ASSERT2(false, "getcontext");
+        }
 
+        m_ctx.uc_link = nullptr;
+        m_ctx.uc_stack.ss_sp = m_stack;
+        m_ctx.uc_stack.ss_size = m_stacksize;
+
+        makecontext(&m_ctx, &Fiber::MainFunc, 0);
+        m_state = READY;
     }
 
     void Fiber::resume()
     {
+        SYLAR_ASSERT(m_state != TERM && m_state != RUNNING);
+        SetThis(this);
+        m_state = RUNNING;
 
+        //如果协程参与调度器调度，那么应该和调度器的主协程进行swap，而不是线程主协程
+        if(m_runInScheduler)
+        {
+            if(swapcontext(&(Scheduler::GetMainFiber()->m_ctx), &m_ctx))
+            {
+                SYLAR_ASSERT2(false, "swapcontext");
+            }
+        }
+        else
+        {
+            if(swapcontext(&(t_thread_fiber->m_ctx), &m_ctx))
+            {
+                SYLAR_ASSERT(false, "swapcontext");
+            }
+        }
     }
 
     void Fiber::yield()
     {
+        //协程运行完之后会自动yield一次，用于回到主协程，此时状态已为结束状态
+        SYLAR_ASSERT(m_state == RUNNING || m_state ==TERM);
+        SetThis(t_thread_fiber.get());
+        if(m_state != TERM)
+        {
+            m_state = READY;
+        }
 
+        //如果协程参与调度器调度，那么应该和调度器的主协程进行swap,而不是线程主协程
+        if(m_runInScheduler)
+        {
+            if(swapcontext(&m_ctx, &(Scheduler::GetMainFiber()->m_ctx)))
+            {
+                SYLAR_ASSERT2(false, "swapcontext");
+            }
+        }
+        else
+        {
+            if(swapcontext(&m_ctx, &(t_threaed_fiber->m_ctx)))
+            {
+                SYLAR_ASSERT2(false, "swapcontext");
+            }
+        }
     }
 
     /**
      * @brief 这里没有处理协程函数出现异常的情况，同样是为了简化状态管理，并且个人认为协程的异常不应该由框架处理，应该由开发者自行处理
      */
-    void Fiber::MainFunc()
+    void Fiber::MainFunc() 
     {
+        Fiber::ptr cur = GetThis(); // GetThis()的shared_from_this()方法让引用计数加1
+        SYLAR_ASSERT(cur);
 
+        cur->m_cb();
+        cur->m_cb    = nullptr;
+        cur->m_state = TERM;
+
+        auto raw_ptr = cur.get(); // 手动让t_fiber的引用计数减1
+        cur.reset();
+        raw_ptr->yield();
     }
 }
